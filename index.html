@@ -137,6 +137,11 @@
         outline: 2px solid var(--chrome-accent);
         outline-offset: 2px;
       }
+      #insertImageBtn:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+        pointer-events: none;
+      }
       #toast {
         font-size: 0.8125rem;
         color: var(--chrome-muted);
@@ -145,6 +150,10 @@
       }
       #toast.show {
         opacity: 1;
+      }
+      #toast.toast-upload {
+        color: var(--chrome-accent);
+        font-weight: 600;
       }
       .hint {
         margin: 0 0 1rem;
@@ -406,7 +415,7 @@
         <code>![说明](图片地址)</code>（独占一行为大图）、代码块
         <code>```</code> … <code>```</code>。若填写下方 Hello 图床 Token，「插入图片」会<strong
           >上传到图床并插入 https 链接</strong
-        >（适合复制到公众号）；未配置时仍为本地 base64。点击复制会将<strong>带内联样式</strong>的 HTML
+        >（适合复制到公众号）；未配置时仍为本地 base64。上传过程中右侧会持续显示状态（大图或网络慢时请稍候，约 2 分钟无响应则自动超时）。点击复制会将<strong>带内联样式</strong>的 HTML
         写入剪贴板，在公众号后台编辑器中粘贴即可。
       </p>
       <details class="helloimg-box">
@@ -748,13 +757,36 @@
           });
         }
 
-        function showToast(msg) {
+        function showToast(msg, opts) {
+          opts = opts || {};
+          var persistent = !!opts.persistent;
+          var uploadStyle = !!opts.uploadStyle;
           toastEl.textContent = msg;
+          toastEl.classList.toggle("toast-upload", uploadStyle);
           toastEl.classList.add("show");
           window.clearTimeout(showToast._t);
-          showToast._t = window.setTimeout(function () {
-            toastEl.classList.remove("show");
-          }, 2200);
+          if (!persistent) {
+            showToast._t = window.setTimeout(function () {
+              toastEl.classList.remove("show");
+              toastEl.classList.remove("toast-upload");
+            }, 3200);
+          }
+        }
+
+        function truncateMiddle(str, maxLen) {
+          maxLen = maxLen || 44;
+          var s = String(str);
+          if (s.length <= maxLen) return s;
+          var keep = maxLen - 1;
+          var head = Math.ceil(keep / 2);
+          var tail = keep - head;
+          return s.slice(0, head) + "…" + s.slice(s.length - tail);
+        }
+
+        function hideToast() {
+          window.clearTimeout(showToast._t);
+          toastEl.classList.remove("show");
+          toastEl.classList.remove("toast-upload");
         }
 
         function insertMarkdownSnippet(text) {
@@ -787,7 +819,7 @@
           return readStoredHelloToken();
         }
 
-        function uploadToHelloimg(file, apiToken) {
+        function uploadToHelloimg(file, apiToken, signal, onBeforeFileUpload) {
           var authHeaders = {
             Authorization: "Bearer " + apiToken,
             Accept: "application/json",
@@ -799,6 +831,7 @@
               authHeaders
             ),
             body: JSON.stringify({ num: 1, seconds: 86400 }),
+            signal: signal,
           })
             .then(function (res) {
               return res.json().then(function (j) {
@@ -817,6 +850,7 @@
                 o.j.data.tokens[0] &&
                 o.j.data.tokens[0].token;
               if (!uploadToken) throw new Error("未返回临时上传 Token");
+              if (onBeforeFileUpload) onBeforeFileUpload();
               var fd = new FormData();
               fd.append("file", file, file.name);
               fd.append("token", uploadToken);
@@ -825,6 +859,7 @@
                 method: "POST",
                 headers: authHeaders,
                 body: fd,
+                signal: signal,
               });
             })
             .then(function (res) {
@@ -887,25 +922,51 @@
 
           var apiToken = getHelloimgApiToken();
           if (apiToken) {
-            showToast("正在上传到 Hello 图床…");
-            uploadToHelloimg(f, apiToken)
+            var uploadAbort = new AbortController();
+            var uploadDeadline = window.setTimeout(function () {
+              uploadAbort.abort();
+            }, 120000);
+            insertImageBtn.disabled = true;
+            showToast("正在连接 Hello 图床…", {
+              persistent: true,
+              uploadStyle: true,
+            });
+            uploadToHelloimg(f, apiToken, uploadAbort.signal, function () {
+              showToast("正在上传图片（大图可能需数十秒）…", {
+                persistent: true,
+                uploadStyle: true,
+              });
+            })
               .then(function (imageUrl) {
+                window.clearTimeout(uploadDeadline);
+                hideToast();
                 var alt = String(f.name || "插图")
                   .replace(/[\[\]\n\r]/g, "")
                   .slice(0, 80);
                 insertMarkdownSnippet(
                   "\n\n![" + alt + "](" + imageUrl + ")\n\n"
                 );
-                showToast("已插入图床链接");
+                showToast(
+                  "已插入图床链接：" + truncateMiddle(imageUrl, 48)
+                );
               })
               .catch(function (err) {
+                window.clearTimeout(uploadDeadline);
+                hideToast();
                 var msg =
                   err && err.message ? err.message : String(err);
-                if (/Failed to fetch|NetworkError|load failed/i.test(msg)) {
+                if (err && err.name === "AbortError") {
+                  msg =
+                    "上传超时或已中断（若图片很大或网络慢，可压缩后重试）";
+                } else if (/Failed to fetch|NetworkError|load failed/i.test(msg)) {
                   msg = "网络或跨域受限，浏览器可能无法直连图床 API";
                 }
                 showToast("图床失败，已用 base64 插入：" + msg);
                 insertLocalImageBase64(f, true);
+              })
+              .finally(function () {
+                window.clearTimeout(uploadDeadline);
+                insertImageBtn.disabled = false;
               });
             return;
           }
