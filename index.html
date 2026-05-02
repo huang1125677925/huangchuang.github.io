@@ -310,6 +310,66 @@
         font-size: 0.75rem;
         color: var(--chrome-muted);
       }
+      details.helloimg-box {
+        margin: 0 0 1rem;
+        padding: 0.65rem 0.85rem;
+        border: 1px solid var(--chrome-border);
+        border-radius: 10px;
+        background: var(--chrome-bg);
+        font-size: 0.8125rem;
+      }
+      details.helloimg-box > summary {
+        cursor: pointer;
+        font-weight: 600;
+        color: var(--chrome-fg);
+        user-select: none;
+      }
+      details.helloimg-box .helloimg-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem 0.75rem;
+        margin-top: 0.65rem;
+      }
+      details.helloimg-box label {
+        font-size: 0.8125rem;
+        color: var(--chrome-muted);
+      }
+      #helloimgToken {
+        flex: 1 1 220px;
+        min-width: 180px;
+        padding: 0.4rem 0.55rem;
+        border: 1px solid var(--chrome-border);
+        border-radius: 8px;
+        background: var(--chrome-bg);
+        color: var(--chrome-fg);
+        font-family: ui-monospace, monospace;
+        font-size: 12px;
+      }
+      #helloimgToken:focus {
+        outline: 2px solid var(--chrome-accent);
+        outline-offset: 1px;
+      }
+      #helloimgSaveToken {
+        padding: 0.4rem 0.75rem;
+        border: 1px solid var(--chrome-border);
+        border-radius: 8px;
+        background: var(--chrome-bg);
+        color: var(--chrome-fg);
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      #helloimgSaveToken:hover {
+        border-color: var(--chrome-accent);
+        color: var(--chrome-accent);
+      }
+      .helloimg-note {
+        margin: 0.5rem 0 0;
+        font-size: 0.75rem;
+        color: var(--chrome-muted);
+        line-height: 1.45;
+      }
     </style>
   </head>
   <body>
@@ -326,7 +386,7 @@
               autocomplete="off"
             />
           </div>
-          <button type="button" id="insertImageBtn" title="在光标处插入本地图片（base64）">
+          <button type="button" id="insertImageBtn" title="若已配置 Hello 图床 Token 则上传得外链；否则插入 base64">
             插入图片
           </button>
           <input
@@ -344,9 +404,36 @@
         左侧使用 Markdown 编写：<code>#</code> / <code>##</code> / <code>###</code>
         标题、空行分段、<code>**粗体**</code>、<code>*斜体*</code>、<code>[文字](链接)</code>、插图
         <code>![说明](图片地址)</code>（独占一行为大图）、代码块
-        <code>```</code> … <code>```</code>。点击复制会将<strong>带内联样式</strong>的 HTML
+        <code>```</code> … <code>```</code>。若填写下方 Hello 图床 Token，「插入图片」会<strong
+          >上传到图床并插入 https 链接</strong
+        >（适合复制到公众号）；未配置时仍为本地 base64。点击复制会将<strong>带内联样式</strong>的 HTML
         写入剪贴板，在公众号后台编辑器中粘贴即可。
       </p>
+      <details class="helloimg-box">
+        <summary>Hello 图床 API Token（可选，仅保存在本浏览器）</summary>
+        <div class="helloimg-row">
+          <label for="helloimgToken">Token</label>
+          <input
+            id="helloimgToken"
+            type="password"
+            spellcheck="false"
+            autocomplete="off"
+            placeholder="个人中心复制的 Token，勿提交到公开仓库"
+          />
+          <button type="button" id="helloimgSaveToken">保存到本地</button>
+        </div>
+        <p class="helloimg-note">
+          使用
+          <a
+            href="https://www.helloimg.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            >helloimg.com</a
+          >
+          开放接口上传；Token 只存放在本机 <code>localStorage</code>，泄漏请立刻在图床重置。请勿把
+          Token 写进网页源码或 Git。
+        </p>
+      </details>
       <div class="panels">
         <div class="panel">
           <label for="source">正文编辑</label>
@@ -375,6 +462,11 @@
         var insertImageBtn = document.getElementById("insertImageBtn");
         var imageFileEl = document.getElementById("imageFile");
         var toastEl = document.getElementById("toast");
+        var helloimgTokenInput = document.getElementById("helloimgToken");
+        var helloimgSaveBtn = document.getElementById("helloimgSaveToken");
+
+        var HELLOIMG_API = "https://www.helloimg.com/api/v1";
+        var HELLOIMG_TOKEN_KEY = "helloimg_api_token";
 
         var STYLES = {
           section:
@@ -680,6 +772,100 @@
           sync();
         }
 
+        function readStoredHelloToken() {
+          try {
+            return (localStorage.getItem(HELLOIMG_TOKEN_KEY) || "").trim();
+          } catch (e) {
+            return "";
+          }
+        }
+
+        function getHelloimgApiToken() {
+          var fromInput = (helloimgTokenInput && helloimgTokenInput.value) || "";
+          var t = String(fromInput).trim();
+          if (t) return t;
+          return readStoredHelloToken();
+        }
+
+        function uploadToHelloimg(file, apiToken) {
+          var authHeaders = {
+            Authorization: "Bearer " + apiToken,
+            Accept: "application/json",
+          };
+          return fetch(HELLOIMG_API + "/images/tokens", {
+            method: "POST",
+            headers: Object.assign(
+              { "Content-Type": "application/json" },
+              authHeaders
+            ),
+            body: JSON.stringify({ num: 1, seconds: 86400 }),
+          })
+            .then(function (res) {
+              return res.json().then(function (j) {
+                return { res: res, j: j };
+              });
+            })
+            .then(function (o) {
+              if (!o.res.ok || (o.j && o.j.status === false)) {
+                throw new Error(
+                  (o.j && o.j.message) || "获取上传凭证失败 " + o.res.status
+                );
+              }
+              var uploadToken =
+                o.j.data &&
+                o.j.data.tokens &&
+                o.j.data.tokens[0] &&
+                o.j.data.tokens[0].token;
+              if (!uploadToken) throw new Error("未返回临时上传 Token");
+              var fd = new FormData();
+              fd.append("file", file, file.name);
+              fd.append("token", uploadToken);
+              fd.append("permission", "1");
+              return fetch(HELLOIMG_API + "/upload", {
+                method: "POST",
+                headers: authHeaders,
+                body: fd,
+              });
+            })
+            .then(function (res) {
+              return res.json().then(function (j) {
+                return { res: res, j: j };
+              });
+            })
+            .then(function (o) {
+              if (!o.res.ok || (o.j && o.j.status === false)) {
+                throw new Error(
+                  (o.j && o.j.message) || "上传失败 " + o.res.status
+                );
+              }
+              var url = o.j.data && o.j.data.links && o.j.data.links.url;
+              if (!url || typeof url !== "string") {
+                throw new Error("响应中无图片链接");
+              }
+              return url.trim();
+            });
+        }
+
+        function insertLocalImageBase64(f, skipSuccessToast) {
+          var reader = new FileReader();
+          reader.onload = function () {
+            var dataUrl = reader.result;
+            if (typeof dataUrl !== "string" || !isAllowedImageSrc(dataUrl)) {
+              showToast("无法使用该图片格式");
+              return;
+            }
+            var alt = String(f.name || "插图")
+              .replace(/[\[\]\n\r]/g, "")
+              .slice(0, 80);
+            insertMarkdownSnippet("\n\n![" + alt + "](" + dataUrl + ")\n\n");
+            if (!skipSuccessToast) showToast("已插入本地图片（base64）");
+          };
+          reader.onerror = function () {
+            showToast("读取图片失败");
+          };
+          reader.readAsDataURL(f);
+        }
+
         insertImageBtn.addEventListener("click", function () {
           imageFileEl.click();
         });
@@ -698,23 +884,50 @@
             showToast("图片超过 6MB，请先压缩后再插入");
             return;
           }
-          var reader = new FileReader();
-          reader.onload = function () {
-            var dataUrl = reader.result;
-            if (typeof dataUrl !== "string" || !isAllowedImageSrc(dataUrl)) {
-              showToast("无法使用该图片格式");
-              return;
-            }
-            var alt = String(f.name || "插图")
-              .replace(/[\[\]\n\r]/g, "")
-              .slice(0, 80);
-            insertMarkdownSnippet("\n\n![" + alt + "](" + dataUrl + ")\n\n");
-            showToast("已插入图片");
-          };
-          reader.onerror = function () {
-            showToast("读取图片失败");
-          };
-          reader.readAsDataURL(f);
+
+          var apiToken = getHelloimgApiToken();
+          if (apiToken) {
+            showToast("正在上传到 Hello 图床…");
+            uploadToHelloimg(f, apiToken)
+              .then(function (imageUrl) {
+                var alt = String(f.name || "插图")
+                  .replace(/[\[\]\n\r]/g, "")
+                  .slice(0, 80);
+                insertMarkdownSnippet(
+                  "\n\n![" + alt + "](" + imageUrl + ")\n\n"
+                );
+                showToast("已插入图床链接");
+              })
+              .catch(function (err) {
+                var msg =
+                  err && err.message ? err.message : String(err);
+                if (/Failed to fetch|NetworkError|load failed/i.test(msg)) {
+                  msg = "网络或跨域受限，浏览器可能无法直连图床 API";
+                }
+                showToast("图床失败，已用 base64 插入：" + msg);
+                insertLocalImageBase64(f, true);
+              });
+            return;
+          }
+
+          insertLocalImageBase64(f);
+        });
+
+        try {
+          var savedTok = readStoredHelloToken();
+          if (savedTok && helloimgTokenInput) helloimgTokenInput.value = savedTok;
+        } catch (e) {}
+
+        helloimgSaveBtn.addEventListener("click", function () {
+          var t = (helloimgTokenInput && helloimgTokenInput.value) || "";
+          t = String(t).trim();
+          try {
+            if (t) localStorage.setItem(HELLOIMG_TOKEN_KEY, t);
+            else localStorage.removeItem(HELLOIMG_TOKEN_KEY);
+            showToast(t ? "Token 已保存在本浏览器" : "已清除保存的 Token");
+          } catch (e) {
+            showToast("无法写入本地存储");
+          }
         });
 
         sourceEl.value = DEFAULT_SOURCE;
