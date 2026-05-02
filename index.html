@@ -5,25 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="日常记录 — 个人主页"
+      content="微信文章排版工具：编辑预览并复制到公众号"
     />
-    <title>日常记录</title>
+    <title>微信文章排版工具</title>
     <style>
       :root {
         color-scheme: light dark;
-        --bg: #faf8f5;
-        --fg: #1a1714;
-        --muted: #5c5650;
-        --accent: #c45c26;
-        --border: rgba(26, 23, 20, 0.12);
+        --chrome-bg: #f0ede8;
+        --chrome-fg: #1c1917;
+        --chrome-muted: #78716c;
+        --chrome-border: rgba(28, 25, 23, 0.12);
+        --chrome-accent: #c2410c;
+        --chrome-accent-hover: #9a3412;
+        --preview-bg: #ffffff;
+        --toast-bg: #292524;
+        --toast-fg: #fafaf9;
       }
       @media (prefers-color-scheme: dark) {
         :root {
-          --bg: #12110f;
-          --fg: #edeae6;
-          --muted: #9a948c;
-          --accent: #e8955c;
-          --border: rgba(237, 234, 230, 0.12);
+          --chrome-bg: #1c1917;
+          --chrome-fg: #e7e5e4;
+          --chrome-muted: #a8a29e;
+          --chrome-border: rgba(231, 229, 228, 0.12);
+          --chrome-accent: #fb923c;
+          --chrome-accent-hover: #fdba74;
+          --preview-bg: #fafaf9;
+          --toast-bg: #44403c;
+          --toast-fg: #fafaf9;
         }
       }
       *,
@@ -35,81 +43,509 @@
         margin: 0;
         min-height: 100vh;
         font-family:
-          "SF Pro Text",
           system-ui,
           -apple-system,
           "Segoe UI",
           Roboto,
+          "PingFang SC",
+          "Hiragino Sans GB",
+          "Microsoft YaHei",
+          sans-serif;
+        font-size: 15px;
+        line-height: 1.5;
+        color: var(--chrome-fg);
+        background: var(--chrome-bg);
+      }
+      .app {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: clamp(1rem, 3vw, 1.5rem);
+      }
+      .top {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 1rem;
+        margin-bottom: 1rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--chrome-border);
+      }
+      .top h1 {
+        margin: 0;
+        font-size: 1.35rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        flex: 1 1 auto;
+        min-width: 12rem;
+      }
+      .top-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem 0.75rem;
+      }
+      .top-actions label {
+        font-size: 0.8125rem;
+        color: var(--chrome-muted);
+        margin-right: 0.25rem;
+      }
+      #articleTitle {
+        width: min(280px, 100%);
+        padding: 0.45rem 0.65rem;
+        border: 1px solid var(--chrome-border);
+        border-radius: 8px;
+        background: var(--chrome-bg);
+        color: var(--chrome-fg);
+        font: inherit;
+      }
+      #articleTitle:focus {
+        outline: 2px solid var(--chrome-accent);
+        outline-offset: 1px;
+      }
+      #copyBtn {
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: 8px;
+        background: var(--chrome-accent);
+        color: #fff;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      #copyBtn:hover {
+        background: var(--chrome-accent-hover);
+      }
+      #copyBtn:focus-visible {
+        outline: 2px solid var(--chrome-accent);
+        outline-offset: 2px;
+      }
+      #toast {
+        font-size: 0.8125rem;
+        color: var(--chrome-muted);
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+      #toast.show {
+        opacity: 1;
+      }
+      .hint {
+        margin: 0 0 1rem;
+        font-size: 0.8125rem;
+        color: var(--chrome-muted);
+      }
+      .panels {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        align-items: stretch;
+        min-height: min(70vh, 640px);
+      }
+      @media (max-width: 880px) {
+        .panels {
+          grid-template-columns: 1fr;
+          min-height: auto;
+        }
+      }
+      .panel {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      .panel > label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--chrome-muted);
+        margin-bottom: 0.35rem;
+      }
+      #source {
+        flex: 1;
+        width: 100%;
+        min-height: 280px;
+        padding: 0.85rem 1rem;
+        border: 1px solid var(--chrome-border);
+        border-radius: 10px;
+        background: var(--chrome-bg);
+        color: var(--chrome-fg);
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        font-size: 13px;
+        line-height: 1.55;
+        resize: vertical;
+      }
+      #source:focus {
+        outline: 2px solid var(--chrome-accent);
+        outline-offset: 1px;
+      }
+      .preview-shell {
+        flex: 1;
+        min-height: 280px;
+        border: 1px solid var(--chrome-border);
+        border-radius: 10px;
+        background: var(--preview-bg);
+        overflow: auto;
+        padding: 0;
+      }
+      /* Preview mirrors WeChat-like typography (inline styles applied in JS for export) */
+      #preview {
+        padding: 24px 20px 32px;
+        max-width: 677px;
+        margin: 0 auto;
+        font-family:
+          -apple-system-font,
+          BlinkMacSystemFont,
           "Helvetica Neue",
+          "PingFang SC",
+          "Hiragino Sans GB",
+          "Microsoft YaHei UI",
+          "Microsoft YaHei",
           Arial,
           sans-serif;
-        font-size: 1.0625rem;
-        line-height: 1.65;
-        color: var(--fg);
-        background: var(--bg);
+        color: #3f3f3f;
+        background: #fff;
       }
-      .wrap {
-        max-width: 38rem;
-        margin: 0 auto;
-        padding: clamp(2.5rem, 8vw, 5rem) clamp(1.25rem, 5vw, 2rem);
+      #preview .wx-title {
+        font-size: 22px;
+        font-weight: 700;
+        line-height: 1.4;
+        margin: 0 0 16px;
+        color: #1a1a1a;
+        text-align: center;
       }
-      header {
-        padding-bottom: 2rem;
-        margin-bottom: 2rem;
-        border-bottom: 1px solid var(--border);
+      #preview .wx-h2 {
+        font-size: 20px;
+        font-weight: 700;
+        margin: 24px 0 12px;
+        color: #1a1a1a;
+        line-height: 1.5;
       }
-      h1 {
-        margin: 0 0 0.35em;
-        font-size: clamp(1.75rem, 5vw, 2.25rem);
-        font-weight: 650;
-        letter-spacing: -0.02em;
+      #preview .wx-h3 {
+        font-size: 18px;
+        font-weight: 700;
+        margin: 20px 0 10px;
+        color: #1a1a1a;
+        line-height: 1.5;
       }
-      .tagline {
-        margin: 0;
-        color: var(--muted);
-        font-size: 1rem;
+      #preview .wx-h4 {
+        font-size: 17px;
+        font-weight: 700;
+        margin: 16px 0 8px;
+        color: #1a1a1a;
+        line-height: 1.5;
       }
-      main p {
+      #preview .wx-p {
         margin: 0 0 1em;
+        font-size: 17px;
+        line-height: 1.75;
+        color: #3f3f3f;
+        letter-spacing: 0.02em;
+        text-align: justify;
       }
-      main p:last-child {
+      #preview .wx-p:last-child {
         margin-bottom: 0;
       }
-      footer {
-        margin-top: 3rem;
-        padding-top: 1.5rem;
-        border-top: 1px solid var(--border);
-        font-size: 0.875rem;
-        color: var(--muted);
+      #preview .wx-pre {
+        margin: 12px 0;
+        padding: 12px 14px;
+        background: #f6f8fa;
+        border-radius: 6px;
+        font-size: 14px;
+        line-height: 1.6;
+        color: #333;
+        overflow-x: auto;
+        font-family: Consolas, Menlo, ui-monospace, monospace;
+        white-space: pre-wrap;
+        word-break: break-word;
       }
-      a {
-        color: var(--accent);
-        text-decoration-thickness: 1px;
-        text-underline-offset: 0.2em;
+      #preview strong {
+        font-weight: 700;
       }
-      a:hover {
-        text-decoration-thickness: 2px;
+      #preview em {
+        font-style: italic;
+      }
+      #preview a {
+        color: #576b95;
+        text-decoration: none;
+      }
+      footer.chrome-foot {
+        margin-top: 1.25rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--chrome-border);
+        font-size: 0.75rem;
+        color: var(--chrome-muted);
       }
     </style>
   </head>
   <body>
-    <div class="wrap">
-      <header>
-        <h1>日常记录</h1>
-        <p class="tagline">随手记下想法与片段。</p>
+    <div class="app">
+      <header class="top">
+        <h1>微信文章排版工具</h1>
+        <div class="top-actions">
+          <div>
+            <label for="articleTitle">标题</label>
+            <input
+              id="articleTitle"
+              type="text"
+              placeholder="选填，居中显示"
+              autocomplete="off"
+            />
+          </div>
+          <button type="button" id="copyBtn">复制到公众号</button>
+          <span id="toast" aria-live="polite"></span>
+        </div>
       </header>
-      <main>
-        <p>
-          欢迎来到个人主页。这里托管在
-          <a href="https://pages.github.com/">GitHub Pages</a>，你可以把这篇页面改成自己的介绍、文章列表或作品展示。
-        </p>
-        <p>
-          修改仓库根目录的 <code>index.html</code> 即可更新站点内容；推送后 Pages 会自动重新构建。
-        </p>
-      </main>
-      <footer>
-        <span>huangchuang.github.io</span>
+      <p class="hint">
+        左侧使用 Markdown 编写：<code>#</code> / <code>##</code> / <code>###</code>
+        标题、空行分段、<code>**粗体**</code>、<code>*斜体*</code>、<code>[文字](链接)</code>、代码块
+        <code>```</code> … <code>```</code>。点击复制会将<strong>带内联样式</strong>的 HTML
+        写入剪贴板，在公众号后台编辑器中粘贴即可。
+      </p>
+      <div class="panels">
+        <div class="panel">
+          <label for="source">正文编辑</label>
+          <textarea id="source" spellcheck="false"></textarea>
+        </div>
+        <div class="panel">
+          <label for="preview">预览（接近公众号阅读样式）</label>
+          <div class="preview-shell">
+            <div id="preview"></div>
+          </div>
+        </div>
+      </div>
+      <footer class="chrome-foot">
+        若粘贴后样式丢失，可在浏览器中允许剪贴板权限；纯文本备份会一并复制。
       </footer>
     </div>
+    <script>
+      (function () {
+        var DEFAULT_SOURCE =
+          "## 示例标题\n\n这是正文第一段。**粗体**与*斜体*，以及[链接示例](https://mp.weixin.qq.com)。\n\n空一行开始新段落。公众号内阅读常用约 **17px** 字号与 **1.75** 行高。\n\n### 小标题\n\n```\n代码块会带浅灰背景\n方便区分正文\n```\n\n编辑左侧内容，右侧实时预览；满意后点「复制到公众号」。";
+
+        var sourceEl = document.getElementById("source");
+        var titleEl = document.getElementById("articleTitle");
+        var previewEl = document.getElementById("preview");
+        var copyBtn = document.getElementById("copyBtn");
+        var toastEl = document.getElementById("toast");
+
+        function escapeHtml(s) {
+          return String(s)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+        }
+
+        function parseInline(s) {
+          var t = escapeHtml(s);
+          t = t.replace(
+            /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
+            '<a href="$2" style="color:#576b95;text-decoration:none;">$1</a>'
+          );
+          t = t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+          t = t.replace(/\*(.+?)\*/g, "<em>$1</em>");
+          return t;
+        }
+
+        function parseDocument(text) {
+          var blocks = [];
+          var raw = text.replace(/\r\n/g, "\n");
+          var parts = raw.split(/\n\s*\n/);
+          for (var i = 0; i < parts.length; i++) {
+            var block = parts[i].trim();
+            if (!block) continue;
+
+            var lines = block.split("\n");
+            var first = lines[0];
+            var hm = first.match(/^(#{1,3})\s+(.*)$/);
+            if (hm && lines.length === 1) {
+              blocks.push({
+                type: "h",
+                level: hm[1].length,
+                html: parseInline(hm[2]),
+              });
+              continue;
+            }
+
+            if (first.startsWith("```")) {
+              var rest = lines.slice(1);
+              var endIdx = -1;
+              for (var j = 0; j < rest.length; j++) {
+                if (rest[j].trim() === "```") {
+                  endIdx = j;
+                  break;
+                }
+              }
+              var codeLines =
+                endIdx >= 0 ? rest.slice(0, endIdx) : rest;
+              blocks.push({
+                type: "code",
+                html: escapeHtml(codeLines.join("\n")),
+              });
+              continue;
+            }
+
+            var paraHtml = lines.map(function (line) {
+              return parseInline(line);
+            }).join("<br/>");
+            blocks.push({ type: "p", html: paraHtml });
+          }
+          return blocks;
+        }
+
+        var STYLES = {
+          section:
+            "max-width:100%;box-sizing:border-box;",
+          title:
+            "font-size:22px;font-weight:700;line-height:1.4;margin:0 0 16px;color:#1a1a1a;text-align:center;",
+          h2:
+            "font-size:20px;font-weight:700;margin:24px 0 12px;color:#1a1a1a;line-height:1.5;",
+          h3:
+            "font-size:18px;font-weight:700;margin:20px 0 10px;color:#1a1a1a;line-height:1.5;",
+          h4:
+            "font-size:17px;font-weight:700;margin:16px 0 8px;color:#1a1a1a;line-height:1.5;",
+          p:
+            "margin:0 0 1em;font-size:17px;line-height:1.75;color:#3f3f3f;letter-spacing:0.02em;text-align:justify;",
+          pre:
+            "margin:12px 0;padding:12px 14px;background:#f6f8fa;border-radius:6px;font-size:14px;line-height:1.6;color:#333;overflow-x:auto;font-family:Consolas,Menlo,monospace;white-space:pre-wrap;word-break:break-word;",
+          strong: "font-weight:700;",
+          em: "font-style:italic;",
+        };
+
+        function exportHtml(blocks, title) {
+          var out = "";
+          if (title && title.trim()) {
+            out +=
+              '<h2 style="' +
+              STYLES.title +
+              '">' +
+              escapeHtml(title.trim()) +
+              "</h2>";
+          }
+          for (var i = 0; i < blocks.length; i++) {
+            var b = blocks[i];
+            if (b.type === "h") {
+              var tag = b.level === 1 ? "h2" : b.level === 2 ? "h3" : "h4";
+              var st =
+                b.level === 1 ? STYLES.h2 : b.level === 2 ? STYLES.h3 : STYLES.h4;
+              out += "<" + tag + ' style="' + st + '">' + b.html + "</" + tag + ">";
+            } else if (b.type === "code") {
+              out += '<pre style="' + STYLES.pre + '">' + b.html + "</pre>";
+            } else {
+              out += '<p style="' + STYLES.p + '">' + b.html + "</p>";
+            }
+          }
+          return '<section style="' + STYLES.section + '">' + out + "</section>";
+        }
+
+        function renderPreview(blocks, title) {
+          previewEl.innerHTML = "";
+          if (title && title.trim()) {
+            var ht = document.createElement("div");
+            ht.className = "wx-title";
+            ht.textContent = title.trim();
+            previewEl.appendChild(ht);
+          }
+          for (var i = 0; i < blocks.length; i++) {
+            var b = blocks[i];
+            var el;
+            if (b.type === "h") {
+              el = document.createElement(b.level === 1 ? "h2" : b.level === 2 ? "h3" : "h4");
+              el.className =
+                b.level === 1 ? "wx-h2" : b.level === 2 ? "wx-h3" : "wx-h4";
+              el.innerHTML = b.html;
+            } else if (b.type === "code") {
+              el = document.createElement("pre");
+              el.className = "wx-pre";
+              el.textContent = codeFromEscaped(b.html);
+            } else {
+              el = document.createElement("p");
+              el.className = "wx-p";
+              el.innerHTML = b.html;
+            }
+            previewEl.appendChild(el);
+          }
+        }
+
+        function codeFromEscaped(escaped) {
+          var d = document.createElement("textarea");
+          d.innerHTML = escaped;
+          return d.value;
+        }
+
+        function sync() {
+          var blocks = parseDocument(sourceEl.value);
+          renderPreview(blocks, titleEl.value);
+        }
+
+        function stripHtml(html) {
+          var d = document.createElement("div");
+          d.innerHTML = html;
+          return d.textContent || d.innerText || "";
+        }
+
+        function copyRich(html, plain) {
+          if (navigator.clipboard && window.ClipboardItem) {
+            return navigator.clipboard.write([
+              new ClipboardItem({
+                "text/html": new Blob([html], { type: "text/html" }),
+                "text/plain": new Blob([plain], { type: "text/plain" }),
+              }),
+            ]);
+          }
+          return new Promise(function (resolve, reject) {
+            var container = document.createElement("div");
+            container.contentEditable = "true";
+            container.style.position = "fixed";
+            container.style.left = "-9999px";
+            container.innerHTML = html;
+            document.body.appendChild(container);
+            var range = document.createRange();
+            range.selectNodeContents(container);
+            var sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            try {
+              var ok = document.execCommand("copy");
+              document.body.removeChild(container);
+              sel.removeAllRanges();
+              if (ok) resolve();
+              else reject(new Error("copy failed"));
+            } catch (e) {
+              document.body.removeChild(container);
+              reject(e);
+            }
+          });
+        }
+
+        function showToast(msg) {
+          toastEl.textContent = msg;
+          toastEl.classList.add("show");
+          window.clearTimeout(showToast._t);
+          showToast._t = window.setTimeout(function () {
+            toastEl.classList.remove("show");
+          }, 2200);
+        }
+
+        sourceEl.value = DEFAULT_SOURCE;
+        titleEl.value = "";
+        sourceEl.addEventListener("input", sync);
+        titleEl.addEventListener("input", sync);
+
+        copyBtn.addEventListener("click", function () {
+          var blocks = parseDocument(sourceEl.value);
+          var html = exportHtml(blocks, titleEl.value);
+          var plain = stripHtml(html);
+          copyRich(html, plain)
+            .then(function () {
+              showToast("已复制，可到公众号编辑器粘贴");
+            })
+            .catch(function () {
+              showToast("复制失败，请检查浏览器权限");
+            });
+        });
+
+        sync();
+      })();
+    </script>
   </body>
 </html>
