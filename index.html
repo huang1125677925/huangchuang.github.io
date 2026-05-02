@@ -119,6 +119,24 @@
         outline: 2px solid var(--chrome-accent);
         outline-offset: 2px;
       }
+      #insertImageBtn {
+        padding: 0.5rem 1rem;
+        border: 1px solid var(--chrome-border);
+        border-radius: 8px;
+        background: var(--chrome-bg);
+        color: var(--chrome-fg);
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      #insertImageBtn:hover {
+        border-color: var(--chrome-accent);
+        color: var(--chrome-accent);
+      }
+      #insertImageBtn:focus-visible {
+        outline: 2px solid var(--chrome-accent);
+        outline-offset: 2px;
+      }
       #toast {
         font-size: 0.8125rem;
         color: var(--chrome-muted);
@@ -267,6 +285,24 @@
         color: #576b95;
         text-decoration: none;
       }
+      #preview .wx-img-wrap {
+        margin: 16px auto;
+        text-align: center;
+        font-size: 0;
+        line-height: 0;
+      }
+      #preview .wx-img-wrap img {
+        max-width: 100%;
+        height: auto;
+        vertical-align: middle;
+        border-radius: 4px;
+      }
+      #preview .wx-p img {
+        max-width: 100%;
+        height: auto;
+        vertical-align: middle;
+        border-radius: 4px;
+      }
       footer.chrome-foot {
         margin-top: 1.25rem;
         padding-top: 1rem;
@@ -290,13 +326,24 @@
               autocomplete="off"
             />
           </div>
+          <button type="button" id="insertImageBtn" title="在光标处插入本地图片（base64）">
+            插入图片
+          </button>
+          <input
+            type="file"
+            id="imageFile"
+            accept="image/*"
+            hidden
+            aria-hidden="true"
+          />
           <button type="button" id="copyBtn">复制到公众号</button>
           <span id="toast" aria-live="polite"></span>
         </div>
       </header>
       <p class="hint">
         左侧使用 Markdown 编写：<code>#</code> / <code>##</code> / <code>###</code>
-        标题、空行分段、<code>**粗体**</code>、<code>*斜体*</code>、<code>[文字](链接)</code>、代码块
+        标题、空行分段、<code>**粗体**</code>、<code>*斜体*</code>、<code>[文字](链接)</code>、插图
+        <code>![说明](图片地址)</code>（独占一行为大图）、代码块
         <code>```</code> … <code>```</code>。点击复制会将<strong>带内联样式</strong>的 HTML
         写入剪贴板，在公众号后台编辑器中粘贴即可。
       </p>
@@ -319,13 +366,38 @@
     <script>
       (function () {
         var DEFAULT_SOURCE =
-          "## 示例标题\n\n这是正文第一段。**粗体**与*斜体*，以及[链接示例](https://mp.weixin.qq.com)。\n\n空一行开始新段落。公众号内阅读常用约 **17px** 字号与 **1.75** 行高。\n\n### 小标题\n\n```\n代码块会带浅灰背景\n方便区分正文\n```\n\n编辑左侧内容，右侧实时预览；满意后点「复制到公众号」。";
+          "## 示例标题\n\n这是正文第一段。**粗体**与*斜体*，以及[链接示例](https://mp.weixin.qq.com)。\n\n![示例配图](https://picsum.photos/seed/weixin/640/360)\n\n空一行开始新段落。公众号内阅读常用约 **17px** 字号与 **1.75** 行高。\n\n### 小标题\n\n```\n代码块会带浅灰背景\n方便区分正文\n```\n\n编辑左侧内容，右侧实时预览；需要本地插图时点顶部「插入图片」；满意后点「复制到公众号」。";
 
         var sourceEl = document.getElementById("source");
         var titleEl = document.getElementById("articleTitle");
         var previewEl = document.getElementById("preview");
         var copyBtn = document.getElementById("copyBtn");
+        var insertImageBtn = document.getElementById("insertImageBtn");
+        var imageFileEl = document.getElementById("imageFile");
         var toastEl = document.getElementById("toast");
+
+        var STYLES = {
+          section:
+            "max-width:100%;box-sizing:border-box;",
+          title:
+            "font-size:22px;font-weight:700;line-height:1.4;margin:0 0 16px;color:#1a1a1a;text-align:center;",
+          h2:
+            "font-size:20px;font-weight:700;margin:24px 0 12px;color:#1a1a1a;line-height:1.5;",
+          h3:
+            "font-size:18px;font-weight:700;margin:20px 0 10px;color:#1a1a1a;line-height:1.5;",
+          h4:
+            "font-size:17px;font-weight:700;margin:16px 0 8px;color:#1a1a1a;line-height:1.5;",
+          p:
+            "margin:0 0 1em;font-size:17px;line-height:1.75;color:#3f3f3f;letter-spacing:0.02em;text-align:justify;",
+          imgWrap:
+            "margin:16px 0;text-align:center;font-size:0;line-height:0;",
+          img:
+            "max-width:100%;height:auto;vertical-align:middle;border-radius:4px;display:inline-block;",
+          pre:
+            "margin:12px 0;padding:12px 14px;background:#f6f8fa;border-radius:6px;font-size:14px;line-height:1.6;color:#333;overflow-x:auto;font-family:Consolas,Menlo,monospace;white-space:pre-wrap;word-break:break-word;",
+          strong: "font-weight:700;",
+          em: "font-style:italic;",
+        };
 
         function escapeHtml(s) {
           return String(s)
@@ -333,6 +405,15 @@
             .replace(/</g, "&lt;")
             .replace(/>/g, "&gt;")
             .replace(/"/g, "&quot;");
+        }
+
+        function isAllowedImageSrc(url) {
+          if (!url || typeof url !== "string") return false;
+          var u = url.trim();
+          if (/^https?:\/\//i.test(u)) return true;
+          if (/^data:image\/(png|jpe?g|gif|webp|bmp|svg\+xml);base64,/i.test(u))
+            return true;
+          return false;
         }
 
         function parseInline(s) {
@@ -344,6 +425,48 @@
           t = t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
           t = t.replace(/\*(.+?)\*/g, "<em>$1</em>");
           return t;
+        }
+
+        var MD_IMG_RE = /!\[([^\]]*)\]\(([^)\s]+)\)/g;
+
+        function splitInlineWithImages(s) {
+          var segments = [];
+          var last = 0;
+          var m;
+          MD_IMG_RE.lastIndex = 0;
+          while ((m = MD_IMG_RE.exec(s)) !== null) {
+            if (m.index > last) {
+              segments.push({ kind: "text", raw: s.slice(last, m.index) });
+            }
+            segments.push({ kind: "img", alt: m[1], src: m[2] });
+            last = m.lastIndex;
+          }
+          if (last < s.length) {
+            segments.push({ kind: "text", raw: s.slice(last) });
+          }
+          return segments;
+        }
+
+        function segmentsToHtml(segments) {
+          var out = "";
+          for (var i = 0; i < segments.length; i++) {
+            var seg = segments[i];
+            if (seg.kind === "text") {
+              out += parseInline(seg.raw);
+            } else if (isAllowedImageSrc(seg.src)) {
+              out +=
+                '<img src="' +
+                escapeHtml(seg.src.trim()) +
+                '" alt="' +
+                escapeHtml(seg.alt) +
+                '" style="' +
+                STYLES.img +
+                '" />';
+            } else {
+              out += escapeHtml("![" + seg.alt + "](" + seg.src + ")");
+            }
+          }
+          return out;
         }
 
         function parseDocument(text) {
@@ -384,32 +507,28 @@
               continue;
             }
 
-            var paraHtml = lines.map(function (line) {
-              return parseInline(line);
-            }).join("<br/>");
+            if (lines.length === 1) {
+              var lone = lines[0].trim();
+              var sole = lone.match(/^!\[([^\]]*)\]\(([^)\s]+)\)$/);
+              if (sole && isAllowedImageSrc(sole[2])) {
+                blocks.push({
+                  type: "img",
+                  alt: sole[1],
+                  src: sole[2].trim(),
+                });
+                continue;
+              }
+            }
+
+            var paraHtml = lines
+              .map(function (line) {
+                return segmentsToHtml(splitInlineWithImages(line));
+              })
+              .join("<br/>");
             blocks.push({ type: "p", html: paraHtml });
           }
           return blocks;
         }
-
-        var STYLES = {
-          section:
-            "max-width:100%;box-sizing:border-box;",
-          title:
-            "font-size:22px;font-weight:700;line-height:1.4;margin:0 0 16px;color:#1a1a1a;text-align:center;",
-          h2:
-            "font-size:20px;font-weight:700;margin:24px 0 12px;color:#1a1a1a;line-height:1.5;",
-          h3:
-            "font-size:18px;font-weight:700;margin:20px 0 10px;color:#1a1a1a;line-height:1.5;",
-          h4:
-            "font-size:17px;font-weight:700;margin:16px 0 8px;color:#1a1a1a;line-height:1.5;",
-          p:
-            "margin:0 0 1em;font-size:17px;line-height:1.75;color:#3f3f3f;letter-spacing:0.02em;text-align:justify;",
-          pre:
-            "margin:12px 0;padding:12px 14px;background:#f6f8fa;border-radius:6px;font-size:14px;line-height:1.6;color:#333;overflow-x:auto;font-family:Consolas,Menlo,monospace;white-space:pre-wrap;word-break:break-word;",
-          strong: "font-weight:700;",
-          em: "font-style:italic;",
-        };
 
         function exportHtml(blocks, title) {
           var out = "";
@@ -430,6 +549,18 @@
               out += "<" + tag + ' style="' + st + '">' + b.html + "</" + tag + ">";
             } else if (b.type === "code") {
               out += '<pre style="' + STYLES.pre + '">' + b.html + "</pre>";
+            } else if (b.type === "img") {
+              if (!isAllowedImageSrc(b.src)) continue;
+              out +=
+                '<p style="' +
+                STYLES.imgWrap +
+                '"><img src="' +
+                escapeHtml(b.src) +
+                '" alt="' +
+                escapeHtml(b.alt || "") +
+                '" style="' +
+                STYLES.img +
+                '"/></p>';
             } else {
               out += '<p style="' + STYLES.p + '">' + b.html + "</p>";
             }
@@ -457,6 +588,14 @@
               el = document.createElement("pre");
               el.className = "wx-pre";
               el.textContent = codeFromEscaped(b.html);
+            } else if (b.type === "img") {
+              if (!isAllowedImageSrc(b.src)) continue;
+              el = document.createElement("div");
+              el.className = "wx-img-wrap";
+              var im = document.createElement("img");
+              im.src = b.src;
+              im.alt = b.alt || "";
+              el.appendChild(im);
             } else {
               el = document.createElement("p");
               el.className = "wx-p";
@@ -525,6 +664,58 @@
             toastEl.classList.remove("show");
           }, 2200);
         }
+
+        function insertMarkdownSnippet(text) {
+          var ta = sourceEl;
+          ta.focus();
+          var val = ta.value;
+          var start =
+            typeof ta.selectionStart === "number" ? ta.selectionStart : val.length;
+          var end =
+            typeof ta.selectionEnd === "number" ? ta.selectionEnd : val.length;
+          var next = val.slice(0, start) + text + val.slice(end);
+          ta.value = next;
+          var pos = start + text.length;
+          ta.selectionStart = ta.selectionEnd = pos;
+          sync();
+        }
+
+        insertImageBtn.addEventListener("click", function () {
+          imageFileEl.click();
+        });
+
+        imageFileEl.addEventListener("change", function () {
+          var files = imageFileEl.files;
+          imageFileEl.value = "";
+          var f = files && files[0];
+          if (!f) return;
+          if (!/^image\//.test(f.type)) {
+            showToast("请选择图片文件");
+            return;
+          }
+          var maxBytes = 6 * 1024 * 1024;
+          if (f.size > maxBytes) {
+            showToast("图片超过 6MB，请先压缩后再插入");
+            return;
+          }
+          var reader = new FileReader();
+          reader.onload = function () {
+            var dataUrl = reader.result;
+            if (typeof dataUrl !== "string" || !isAllowedImageSrc(dataUrl)) {
+              showToast("无法使用该图片格式");
+              return;
+            }
+            var alt = String(f.name || "插图")
+              .replace(/[\[\]\n\r]/g, "")
+              .slice(0, 80);
+            insertMarkdownSnippet("\n\n![" + alt + "](" + dataUrl + ")\n\n");
+            showToast("已插入图片");
+          };
+          reader.onerror = function () {
+            showToast("读取图片失败");
+          };
+          reader.readAsDataURL(f);
+        });
 
         sourceEl.value = DEFAULT_SOURCE;
         titleEl.value = "";
