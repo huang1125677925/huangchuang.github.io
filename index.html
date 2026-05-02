@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="日常记录 — 个人主页"
+    />
+    <title>日常记录</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #faf8f5;
+        --fg: #1a1714;
+        --muted: #5c5650;
+        --accent: #c45c26;
+        --border: rgba(26, 23, 20, 0.12);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #12110f;
+          --fg: #edeae6;
+          --muted: #9a948c;
+          --accent: #e8955c;
+          --border: rgba(237, 234, 230, 0.12);
+        }
+      }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family:
+          "SF Pro Text",
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          "Helvetica Neue",
+          Arial,
+          sans-serif;
+        font-size: 1.0625rem;
+        line-height: 1.65;
+        color: var(--fg);
+        background: var(--bg);
+      }
+      .wrap {
+        max-width: 38rem;
+        margin: 0 auto;
+        padding: clamp(2.5rem, 8vw, 5rem) clamp(1.25rem, 5vw, 2rem);
+      }
+      header {
+        padding-bottom: 2rem;
+        margin-bottom: 2rem;
+        border-bottom: 1px solid var(--border);
+      }
+      h1 {
+        margin: 0 0 0.35em;
+        font-size: clamp(1.75rem, 5vw, 2.25rem);
+        font-weight: 650;
+        letter-spacing: -0.02em;
+      }
+      .tagline {
+        margin: 0;
+        color: var(--muted);
+        font-size: 1rem;
+      }
+      main p {
+        margin: 0 0 1em;
+      }
+      main p:last-child {
+        margin-bottom: 0;
+      }
+      footer {
+        margin-top: 3rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--border);
+        font-size: 0.875rem;
+        color: var(--muted);
+      }
+      a {
+        color: var(--accent);
+        text-decoration-thickness: 1px;
+        text-underline-offset: 0.2em;
+      }
+      a:hover {
+        text-decoration-thickness: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>日常记录</h1>
+        <p class="tagline">随手记下想法与片段。</p>
+      </header>
+      <main>
+        <p>
+          欢迎来到个人主页。这里托管在
+          <a href="https://pages.github.com/">GitHub Pages</a>，你可以把这篇页面改成自己的介绍、文章列表或作品展示。
+        </p>
+        <p>
+          修改仓库根目录的 <code>index.html</code> 即可更新站点内容；推送后 Pages 会自动重新构建。
+        </p>
+      </main>
+      <footer>
+        <span>huangchuang.github.io</span>
+      </footer>
+    </div>
+  </body>
+</html>
