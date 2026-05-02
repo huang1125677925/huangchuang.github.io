@@ -155,6 +155,99 @@
         color: var(--chrome-accent);
         font-weight: 600;
       }
+      /* Prominent overlay banner so mobile users always see upload progress */
+      #statusBanner {
+        position: fixed;
+        left: 50%;
+        top: 12px;
+        transform: translate(-50%, -120%);
+        z-index: 9999;
+        max-width: min(92vw, 520px);
+        padding: 0.7rem 0.95rem;
+        border-radius: 12px;
+        background: var(--toast-bg);
+        color: var(--toast-fg);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-size: 0.875rem;
+        line-height: 1.35;
+        opacity: 0;
+        pointer-events: none;
+        transition:
+          opacity 0.2s ease,
+          transform 0.25s ease;
+        word-break: break-word;
+      }
+      #statusBanner.show {
+        opacity: 1;
+        transform: translate(-50%, 0);
+        pointer-events: auto;
+      }
+      #statusBanner.kind-progress {
+        background: var(--chrome-accent);
+        color: #fff;
+      }
+      #statusBanner.kind-success {
+        background: #166534;
+        color: #fff;
+      }
+      #statusBanner.kind-error {
+        background: #b91c1c;
+        color: #fff;
+      }
+      #statusBanner .sb-text {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      #statusBanner .sb-spinner {
+        flex: 0 0 auto;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        border-top-color: #fff;
+        animation: sbSpin 0.8s linear infinite;
+        display: none;
+      }
+      #statusBanner.kind-progress .sb-spinner {
+        display: inline-block;
+      }
+      #statusBanner .sb-close {
+        flex: 0 0 auto;
+        margin-left: 0.25rem;
+        background: transparent;
+        border: 0;
+        color: inherit;
+        font-size: 1.1rem;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0 0.25rem;
+        opacity: 0.85;
+        display: none;
+      }
+      #statusBanner.kind-success .sb-close,
+      #statusBanner.kind-error .sb-close {
+        display: inline-block;
+      }
+      @keyframes sbSpin {
+        to { transform: rotate(360deg); }
+      }
+      #insertImageBtn .ibtn-spinner {
+        display: none;
+        width: 12px;
+        height: 12px;
+        margin-right: 0.4rem;
+        vertical-align: -1px;
+        border-radius: 50%;
+        border: 2px solid currentColor;
+        border-top-color: transparent;
+        animation: sbSpin 0.8s linear infinite;
+      }
+      #insertImageBtn.is-uploading .ibtn-spinner {
+        display: inline-block;
+      }
       .hint {
         margin: 0 0 1rem;
         font-size: 0.8125rem;
@@ -396,7 +489,7 @@
             />
           </div>
           <button type="button" id="insertImageBtn" title="若已配置 Hello 图床 Token 则上传得外链；否则插入 base64">
-            插入图片
+            <span class="ibtn-spinner" aria-hidden="true"></span><span class="ibtn-label">插入图片</span>
           </button>
           <input
             type="file"
@@ -415,7 +508,7 @@
         <code>![说明](图片地址)</code>（独占一行为大图）、代码块
         <code>```</code> … <code>```</code>。若填写下方 Hello 图床 Token，「插入图片」会<strong
           >上传到图床并插入 https 链接</strong
-        >（适合复制到公众号）；未配置时仍为本地 base64。上传过程中右侧会持续显示状态（大图或网络慢时请稍候，约 2 分钟无响应则自动超时）。点击复制会将<strong>带内联样式</strong>的 HTML
+        >（适合复制到公众号）；未配置时仍为本地 base64。上传过程中页面顶部会出现<strong>彩色状态条</strong>显示连接 / 上传 / 成功 / 失败，按钮也会变成「上传中…」并禁用；约 2 分钟无响应自动超时。点击复制会将<strong>带内联样式</strong>的 HTML
         写入剪贴板，在公众号后台编辑器中粘贴即可。
       </p>
       <details class="helloimg-box">
@@ -459,6 +552,11 @@
         若粘贴后样式丢失，可在浏览器中允许剪贴板权限；纯文本备份会一并复制。
       </footer>
     </div>
+    <div id="statusBanner" role="status" aria-live="polite">
+      <span class="sb-spinner" aria-hidden="true"></span>
+      <span class="sb-text"></span>
+      <button type="button" class="sb-close" aria-label="关闭">×</button>
+    </div>
     <script>
       (function () {
         var DEFAULT_SOURCE =
@@ -469,10 +567,14 @@
         var previewEl = document.getElementById("preview");
         var copyBtn = document.getElementById("copyBtn");
         var insertImageBtn = document.getElementById("insertImageBtn");
+        var insertImageBtnLabel = insertImageBtn.querySelector(".ibtn-label");
         var imageFileEl = document.getElementById("imageFile");
         var toastEl = document.getElementById("toast");
         var helloimgTokenInput = document.getElementById("helloimgToken");
         var helloimgSaveBtn = document.getElementById("helloimgSaveToken");
+        var statusBannerEl = document.getElementById("statusBanner");
+        var statusTextEl = statusBannerEl.querySelector(".sb-text");
+        var statusCloseEl = statusBannerEl.querySelector(".sb-close");
 
         var HELLOIMG_API = "https://www.helloimg.com/api/v1";
         var HELLOIMG_TOKEN_KEY = "helloimg_api_token";
@@ -789,9 +891,45 @@
           toastEl.classList.remove("toast-upload");
         }
 
-        function insertMarkdownSnippet(text) {
+        function setStatus(kind, msg, opts) {
+          opts = opts || {};
+          var autoHideMs = opts.autoHideMs;
+          window.clearTimeout(setStatus._t);
+          statusBannerEl.classList.remove(
+            "kind-progress",
+            "kind-success",
+            "kind-error"
+          );
+          if (kind) statusBannerEl.classList.add("kind-" + kind);
+          statusTextEl.textContent = msg || "";
+          statusBannerEl.classList.add("show");
+          if (autoHideMs && autoHideMs > 0) {
+            setStatus._t = window.setTimeout(hideStatus, autoHideMs);
+          }
+        }
+
+        function hideStatus() {
+          window.clearTimeout(setStatus._t);
+          statusBannerEl.classList.remove("show");
+        }
+
+        statusCloseEl.addEventListener("click", hideStatus);
+
+        function setUploadingButton(isUploading) {
+          if (isUploading) {
+            insertImageBtn.classList.add("is-uploading");
+            insertImageBtn.disabled = true;
+            if (insertImageBtnLabel) insertImageBtnLabel.textContent = "上传中…";
+          } else {
+            insertImageBtn.classList.remove("is-uploading");
+            insertImageBtn.disabled = false;
+            if (insertImageBtnLabel) insertImageBtnLabel.textContent = "插入图片";
+          }
+        }
+
+        function insertMarkdownSnippet(text, opts) {
+          opts = opts || {};
           var ta = sourceEl;
-          ta.focus();
           var val = ta.value;
           var start =
             typeof ta.selectionStart === "number" ? ta.selectionStart : val.length;
@@ -800,8 +938,19 @@
           var next = val.slice(0, start) + text + val.slice(end);
           ta.value = next;
           var pos = start + text.length;
+          if (!opts.silent) ta.focus();
           ta.selectionStart = ta.selectionEnd = pos;
           sync();
+          if (opts.revealPreview) {
+            try {
+              previewEl.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+              });
+            } catch (e) {
+              previewEl.scrollIntoView();
+            }
+          }
         }
 
         function readStoredHelloToken() {
@@ -819,6 +968,18 @@
           return readStoredHelloToken();
         }
 
+        function readResponseBody(res) {
+          return res.text().then(function (txt) {
+            var j = null;
+            try {
+              j = txt ? JSON.parse(txt) : null;
+            } catch (e) {
+              j = null;
+            }
+            return { res: res, j: j, text: txt };
+          });
+        }
+
         function uploadToHelloimg(file, apiToken, signal, onBeforeFileUpload) {
           var authHeaders = {
             Authorization: "Bearer " + apiToken,
@@ -833,18 +994,20 @@
             body: JSON.stringify({ num: 1, seconds: 86400 }),
             signal: signal,
           })
-            .then(function (res) {
-              return res.json().then(function (j) {
-                return { res: res, j: j };
-              });
-            })
+            .then(readResponseBody)
             .then(function (o) {
               if (!o.res.ok || (o.j && o.j.status === false)) {
+                var apiMsg = o.j && (o.j.message || o.j.error);
+                var snippet = apiMsg || (o.text || "").slice(0, 120);
                 throw new Error(
-                  (o.j && o.j.message) || "获取上传凭证失败 " + o.res.status
+                  "获取上传凭证失败 (HTTP " +
+                    o.res.status +
+                    (snippet ? ": " + snippet : "") +
+                    ")"
                 );
               }
               var uploadToken =
+                o.j &&
                 o.j.data &&
                 o.j.data.tokens &&
                 o.j.data.tokens[0] &&
@@ -862,18 +1025,20 @@
                 signal: signal,
               });
             })
-            .then(function (res) {
-              return res.json().then(function (j) {
-                return { res: res, j: j };
-              });
-            })
+            .then(readResponseBody)
             .then(function (o) {
               if (!o.res.ok || (o.j && o.j.status === false)) {
+                var apiMsg = o.j && (o.j.message || o.j.error);
+                var snippet = apiMsg || (o.text || "").slice(0, 120);
                 throw new Error(
-                  (o.j && o.j.message) || "上传失败 " + o.res.status
+                  "上传失败 (HTTP " +
+                    o.res.status +
+                    (snippet ? ": " + snippet : "") +
+                    ")"
                 );
               }
-              var url = o.j.data && o.j.data.links && o.j.data.links.url;
+              var url =
+                o.j && o.j.data && o.j.data.links && o.j.data.links.url;
               if (!url || typeof url !== "string") {
                 throw new Error("响应中无图片链接");
               }
@@ -886,17 +1051,23 @@
           reader.onload = function () {
             var dataUrl = reader.result;
             if (typeof dataUrl !== "string" || !isAllowedImageSrc(dataUrl)) {
-              showToast("无法使用该图片格式");
+              setStatus("error", "无法使用该图片格式", { autoHideMs: 5000 });
               return;
             }
             var alt = String(f.name || "插图")
               .replace(/[\[\]\n\r]/g, "")
               .slice(0, 80);
-            insertMarkdownSnippet("\n\n![" + alt + "](" + dataUrl + ")\n\n");
-            if (!skipSuccessToast) showToast("已插入本地图片（base64）");
+            insertMarkdownSnippet("\n\n![" + alt + "](" + dataUrl + ")\n\n", {
+              revealPreview: true,
+            });
+            if (!skipSuccessToast) {
+              setStatus("success", "已插入本地图片（base64）", {
+                autoHideMs: 4000,
+              });
+            }
           };
           reader.onerror = function () {
-            showToast("读取图片失败");
+            setStatus("error", "读取图片失败", { autoHideMs: 5000 });
           };
           reader.readAsDataURL(f);
         }
@@ -911,66 +1082,84 @@
           var f = files && files[0];
           if (!f) return;
           if (!/^image\//.test(f.type)) {
-            showToast("请选择图片文件");
+            setStatus("error", "请选择图片文件", { autoHideMs: 4000 });
             return;
           }
           var maxBytes = 6 * 1024 * 1024;
           if (f.size > maxBytes) {
-            showToast("图片超过 6MB，请先压缩后再插入");
+            setStatus("error", "图片超过 6MB，请先压缩后再插入", {
+              autoHideMs: 5000,
+            });
             return;
           }
 
+          var sizeKB = Math.round(f.size / 1024);
           var apiToken = getHelloimgApiToken();
           if (apiToken) {
             var uploadAbort = new AbortController();
             var uploadDeadline = window.setTimeout(function () {
               uploadAbort.abort();
             }, 120000);
-            insertImageBtn.disabled = true;
-            showToast("正在连接 Hello 图床…", {
-              persistent: true,
-              uploadStyle: true,
-            });
+            setUploadingButton(true);
+            setStatus(
+              "progress",
+              "正在连接 Hello 图床… (" + sizeKB + " KB)"
+            );
             uploadToHelloimg(f, apiToken, uploadAbort.signal, function () {
-              showToast("正在上传图片（大图可能需数十秒）…", {
-                persistent: true,
-                uploadStyle: true,
-              });
+              setStatus(
+                "progress",
+                "正在上传图片到图床… (" +
+                  sizeKB +
+                  " KB，大图或慢网络可能需数十秒)"
+              );
             })
               .then(function (imageUrl) {
                 window.clearTimeout(uploadDeadline);
-                hideToast();
                 var alt = String(f.name || "插图")
                   .replace(/[\[\]\n\r]/g, "")
                   .slice(0, 80);
                 insertMarkdownSnippet(
-                  "\n\n![" + alt + "](" + imageUrl + ")\n\n"
+                  "\n\n![" + alt + "](" + imageUrl + ")\n\n",
+                  { revealPreview: true }
                 );
-                showToast(
-                  "已插入图床链接：" + truncateMiddle(imageUrl, 48)
+                setStatus(
+                  "success",
+                  "上传成功，已插入链接：" + truncateMiddle(imageUrl, 56),
+                  { autoHideMs: 6000 }
                 );
               })
               .catch(function (err) {
                 window.clearTimeout(uploadDeadline);
-                hideToast();
-                var msg =
-                  err && err.message ? err.message : String(err);
+                var msg = err && err.message ? err.message : String(err);
                 if (err && err.name === "AbortError") {
                   msg =
                     "上传超时或已中断（若图片很大或网络慢，可压缩后重试）";
-                } else if (/Failed to fetch|NetworkError|load failed/i.test(msg)) {
-                  msg = "网络或跨域受限，浏览器可能无法直连图床 API";
+                } else if (
+                  /Failed to fetch|NetworkError|load failed/i.test(msg)
+                ) {
+                  msg =
+                    "网络或跨域受限，浏览器无法直连图床 API（请检查网络/代理）";
                 }
-                showToast("图床失败，已用 base64 插入：" + msg);
+                setStatus(
+                  "error",
+                  "图床上传失败：" +
+                    msg +
+                    "。已自动改用本地 base64 插入。",
+                  { autoHideMs: 9000 }
+                );
                 insertLocalImageBase64(f, true);
               })
               .finally(function () {
                 window.clearTimeout(uploadDeadline);
-                insertImageBtn.disabled = false;
+                setUploadingButton(false);
               });
             return;
           }
 
+          setStatus(
+            "progress",
+            "未配置图床 Token，正在以 base64 插入… (" + sizeKB + " KB)"
+          );
           insertLocalImageBase64(f);
         });
 
